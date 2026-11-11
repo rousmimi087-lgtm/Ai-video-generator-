@@ -35,20 +35,20 @@ generate.addEventListener('click',async()=>{
  busy=true;generate.disabled=true;generate.textContent='Submitting your video…';
  show('Submitting a short test video to Magic Hour. Please do not press Generate again.');
  try{
-  const response=await fetch(API_BASE+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt.value.trim(),style,aspectRatio:aspect()})});
+  const response=await fetch(API_BASE+'/api/text-to-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({end_seconds:3,style:{prompt:prompt.value.trim()+' | Visual style: '+style},aspect_ratio:aspect(),model:'ltx-2.5',resolution:'480p',audio:false})});
   const data=await response.json();
   if(!response.ok)throw new Error(data.message||data.error||('Provider returned HTTP '+response.status));
-  const id=data.id||data.project_id;
+  const id=data.id||data.project_id||data.project?.id;
   if(!id){show('The provider response was received, but no project ID was returned. Details: '+JSON.stringify(data));return}
   show('Video job submitted. Project ID: '+id+'\nCredits charged/estimated: '+(data.credits_charged??data.estimated_frame_cost??'Check Magic Hour dashboard')+'\nChecking progress…');
   let finished=false;
   for(let i=0;i<24;i++){
    await new Promise(r=>setTimeout(r,5000));
-   const poll=await fetch(API_BASE+'/api/status?id='+encodeURIComponent(id));
+   const poll=await fetch(API_BASE+'/api/video/'+encodeURIComponent(id));
    const result=await poll.json();
    if(!poll.ok)throw new Error(result.message||result.error||('Status check HTTP '+poll.status));
    const state=String(result.status||result.state||'').toLowerCase();
-   const urls=result.downloads||result.output||result.outputs;
+   const urls=result.downloads||result.output||result.outputs||result.video_url||result.download_url;
    if(['complete','completed','success','succeeded'].includes(state)||urls){
     show('Video job finished. Project: '+id+'\n'+JSON.stringify(result,null,2));
     const link=(Array.isArray(urls)?urls[0]?.url:urls?.url)||result.video_url||result.download_url;
