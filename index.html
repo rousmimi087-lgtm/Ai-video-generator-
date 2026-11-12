@@ -16,50 +16,61 @@
 <div class="panel"><h2>Create a video</h2><p class="sub">Start with a prompt and customize your output.</p>
 <label class="label" for="prompt">Describe your video</label><textarea id="prompt" class="prompt" maxlength="1200" placeholder="A cinematic close-up of a glass perfume bottle on a marble table, soft morning sunlight, floating petals, elegant camera movement..."></textarea><div class="hint"><span id="count">0</span> / 1200</div>
 <span class="label">Visual style</span><div class="chips" id="styles"><button class="chip active" data-value="Cinematic">Cinematic</button><button class="chip" data-value="Realistic">Realistic</button><button class="chip" data-value="Anime">Anime</button><button class="chip" data-value="3D animation">3D animation</button><button class="chip" data-value="Fashion film">Fashion film</button><button class="chip" data-value="Product ad">Product ad</button></div>
-<div class="fields"><div><label class="label" for="ratio">Aspect ratio</label><select id="ratio"><option>16:9 · Landscape</option><option>9:16 · Portrait</option><option>1:1 · Square</option><option>4:5 · Social</option></select></div><div><label class="label" for="duration">Duration</label><select id="duration"><option>5 seconds</option><option>10 seconds</option><option>15 seconds</option><option>30 seconds</option></select></div><div><label class="label" for="quality">Quality</label><select id="quality"><option>Standard</option><option>High</option></select></div><div><label class="label" for="language">Interface language</label><select id="language"><option>English</option><option>العربية</option></select></div></div>
-<button class="generate" id="generate">✦ &nbsp; Generate video</button><div class="status" id="status" role="status"></div><p class="note">Video generation uses your connected Magic Hour credits. A short test clip is submitted first; check the returned credit estimate before making more videos.</p>
+<div class="fields"><div><label class="label" for="ratio">Aspect ratio</label><select id="ratio"><option>16:9 · Landscape</option><option>9:16 · Portrait</option><option>1:1 · Square</option></select></div><div><label class="label" for="duration">Duration</label><select id="duration"><option>3 seconds · test clip</option></select></div><div><label class="label" for="quality">Quality</label><select id="quality"><option>480p · test quality</option></select></div><div><label class="label" for="language">Interface language</label><select id="language"><option>English</option><option>العربية</option></select></div></div>
+<button class="generate" id="generate">✦ &nbsp; Generate video</button><div class="status" id="status" role="status"></div><p class="note">A 3-second 480p test request is sent to Magic Hour. Generation may use account credits. Check your available free credits before pressing Generate; no paid plan or purchase is required by this page.</p>
 </div>
 <aside class="panel"><h2>Preview</h2><p class="sub">Your generated video will appear here.</p><div class="preview"><div class="play">▶</div><strong>Your canvas is ready</strong><p>Write a prompt and prepare your first video brief.</p></div><div class="features"><div class="feature"><b>✧ Any style</b><span>From realistic to 3D</span></div><div class="feature"><b>▣ Every format</b><span>Social, web and mobile</span></div><div class="feature"><b>↗ Creator-ready</b><span>Designed for sharing</span></div></div></aside>
 </section><div class="footer">MOTION STUDIO · A creative workspace for the next generation of video.</div>
 </main><script>
 const API_BASE='https://motion-studio-api.rousmimi087.workers.dev';
 const prompt=document.getElementById('prompt'),count=document.getElementById('count'),status=document.getElementById('status'),generate=document.getElementById('generate');
+const preview=document.querySelector('.preview');
 let style='Cinematic',busy=false;
 prompt.addEventListener('input',()=>count.textContent=prompt.value.length);
 document.querySelectorAll('#styles .chip').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('#styles .chip').forEach(x=>x.classList.remove('active'));btn.classList.add('active');style=btn.dataset.value}));
 function show(message){status.textContent=message;status.classList.add('show')}
 function aspect(){const v=document.getElementById('ratio').value;return v.startsWith('9:16')?'9:16':v.startsWith('1:1')?'1:1':'16:9'}
+function getVideoUrl(data){
+ const d=data.downloads||data.output||data.outputs;
+ if(Array.isArray(d)){const item=d.find(x=>x&&typeof x==='object'&&(x.url||x.download_url));return item?.url||item?.download_url||null}
+ if(d&&typeof d==='object')return d.url||d.download_url||null;
+ return data.video_url||data.download_url||data.url||null;
+}
 generate.addEventListener('click',async()=>{
  if(busy)return;
  if(!prompt.value.trim()){show('Add a description of the video you want to create, then try again.');prompt.focus();return}
- busy=true;generate.disabled=true;generate.textContent='Submitting your video…';
- show('Submitting a short test video to Magic Hour. Please do not press Generate again.');
+ busy=true;generate.disabled=true;generate.textContent='Submitting your test video…';
+ show('Submitting a 3-second 480p test request to Magic Hour. This may use credits from your account.');
  try{
-  const response=await fetch(API_BASE+'/api/text-to-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({end_seconds:3,style:{prompt:prompt.value.trim()+' | Visual style: '+style},aspect_ratio:aspect(),model:'ltx-2.5',resolution:'480p',audio:false})});
-  const data=await response.json();
-  if(!response.ok)throw new Error(data.message||data.error||('Provider returned HTTP '+response.status));
+  const response=await fetch(API_BASE+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt.value.trim(),style,aspectRatio:aspect()})});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.message||data.error||('Request failed (HTTP '+response.status+')'));
   const id=data.id||data.project_id||data.project?.id;
-  if(!id){show('The provider response was received, but no project ID was returned. Details: '+JSON.stringify(data));return}
-  show('Video job submitted. Project ID: '+id+'\nCredits charged/estimated: '+(data.credits_charged??data.estimated_frame_cost??'Check Magic Hour dashboard')+'\nChecking progress…');
+  if(!id)throw new Error('The provider did not return a project ID: '+JSON.stringify(data));
+  show('Request accepted. Project ID: '+id+'\nCredits charged: '+(data.credits_charged??'Check your Magic Hour dashboard')+'\nChecking progress…');
   let finished=false;
   for(let i=0;i<24;i++){
    await new Promise(r=>setTimeout(r,5000));
-   const poll=await fetch(API_BASE+'/api/video/'+encodeURIComponent(id));
-   const result=await poll.json();
-   if(!poll.ok)throw new Error(result.message||result.error||('Status check HTTP '+poll.status));
+   const poll=await fetch(API_BASE+'/api/status?id='+encodeURIComponent(id));
+   const result=await poll.json().catch(()=>({}));
+   if(!poll.ok)throw new Error(result.message||result.error||('Status check failed (HTTP '+poll.status+')'));
    const state=String(result.status||result.state||'').toLowerCase();
-   const urls=result.downloads||result.output||result.outputs||result.video_url||result.download_url;
-   if(['complete','completed','success','succeeded'].includes(state)||urls){
-    show('Video job finished. Project: '+id+'\n'+JSON.stringify(result,null,2));
-    const link=(Array.isArray(urls)?urls[0]?.url:urls?.url)||result.video_url||result.download_url;
-    if(link){const a=document.createElement('a');a.href=link;a.target='_blank';a.rel='noopener';a.textContent='Open generated video';a.style.display='block';a.style.marginTop='12px';status.appendChild(a)}
+   const videoUrl=getVideoUrl(result);
+   if(['complete','completed','success','succeeded'].includes(state)||videoUrl){
+    show('Your video is ready! Project ID: '+id);
+    if(videoUrl){
+     preview.innerHTML='';
+     const video=document.createElement('video');video.src=videoUrl;video.controls=true;video.playsInline=true;video.style.width='100%';video.style.maxHeight='520px';video.style.borderRadius='12px';
+     const link=document.createElement('a');link.href=videoUrl;link.target='_blank';link.rel='noopener';link.textContent='Open / download video';link.style.display='inline-block';link.style.marginTop='12px';
+     preview.append(video,link);
+    } else show('The project is complete, but the provider has not returned a download URL yet. Open your Magic Hour dashboard to retrieve it. Project ID: '+id);
     finished=true;break;
    }
-   if(['failed','error'].includes(state))throw new Error(result.error||result.message||'Video generation failed.');
-   show('Video is processing… Project ID: '+id+'\nStatus: '+(state||'processing')+'\nPlease wait.');
+   if(['failed','error'].includes(state))throw new Error(result.error?.message||result.error||result.message||'Video generation failed.');
+   show('Your video is processing… Project ID: '+id+'\nStatus: '+(state||'processing')+'\nPlease wait.');
   }
-  if(!finished)show('Your video is still processing. Project ID: '+id+'\nYou can check it in your Magic Hour Developer dashboard. Do not submit it again yet, to avoid duplicate credit use.');
- }catch(e){show('Could not complete the video request: '+e.message+'\nCheck the Worker deployment and Magic Hour API response before retrying.')}
+  if(!finished)show('Your video is still processing. Project ID: '+id+'\nCheck your Magic Hour dashboard before submitting another request to avoid duplicate credit use.');
+ }catch(e){show('Could not complete the video request: '+e.message+'\nCheck the Cloudflare Worker deployment and Magic Hour API key configuration.')}
  finally{busy=false;generate.disabled=false;generate.textContent='✦  Generate video'}
 });
 </script></body></html>
