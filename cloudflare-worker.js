@@ -44,11 +44,11 @@ export default {
         }
 
         const requestedDuration = Number(input.duration ?? 3);
-        if (!Number.isInteger(requestedDuration) || requestedDuration < 3 || requestedDuration > 60) {
-          return json({ error: "Choose a whole-number duration from 3 to 60 seconds." }, 400, origin);
+        if (!Number.isInteger(requestedDuration) || requestedDuration < 3 || requestedDuration > 30) {
+          return json({ error: "Choose a whole-number duration from 3 to 30 seconds." }, 400, origin);
         }
 
-        // LTX-2.5 supports durations up to 60 seconds; account plan and credits may restrict longer jobs.
+        // Motion Studio currently caps requests at 30 seconds to keep the first release simple.
         const body = {
           end_seconds: requestedDuration,
           aspect_ratio: ["16:9", "9:16", "1:1"].includes(input.aspectRatio) ? input.aspectRatio : "16:9",
