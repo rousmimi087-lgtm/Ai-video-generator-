@@ -26,56 +26,55 @@ const API_BASE='https://motion-studio-api.rousmimi087.workers.dev';
 const prompt=document.getElementById('prompt'),count=document.getElementById('count'),status=document.getElementById('status'),generate=document.getElementById('generate'),durationSelect=document.getElementById('duration'),durationNote=document.getElementById('durationNote');
 const preview=document.querySelector('.preview');
 let style='Cinematic',busy=false;
-for(let seconds=3;seconds<=30;seconds++){const option=document.createElement('option');option.value=String(seconds);option.textContent=seconds===60?'60 seconds · 1 minute':`${seconds} seconds`;durationSelect.append(option)}
+for(let seconds=3;seconds<=30;seconds++){const option=document.createElement('option');option.value=String(seconds);option.textContent=seconds+' seconds';durationSelect.append(option)}
 durationSelect.value='3';
-durationSelect.addEventListener('change',()=>{const seconds=Number(durationSelect.value);durationNote.textContent=seconds>=20?`Selected: ${seconds} seconds. This longer generation may use more credits. Check your Magic Hour balance before generating.`:`Selected: ${seconds} seconds. Generation uses account credits; check your available balance before generating.`});
+durationSelect.addEventListener('change',()=>{const seconds=Number(durationSelect.value);durationNote.textContent='Selected: '+seconds+' seconds. Generation uses Magic Hour credits; check your available balance before generating.'});
 prompt.addEventListener('input',()=>count.textContent=prompt.value.length);
 document.querySelectorAll('#styles .chip').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('#styles .chip').forEach(x=>x.classList.remove('active'));btn.classList.add('active');style=btn.dataset.value}));
 function show(message){status.textContent=message;status.classList.add('show')}
 function aspect(){const v=document.getElementById('ratio').value;return v.startsWith('9:16')?'9:16':v.startsWith('1:1')?'1:1':'16:9'}
-function getVideoUrl(data){
- const d=data.downloads||data.output||data.outputs;
- if(Array.isArray(d)){const item=d.find(x=>x&&typeof x==='object'&&(x.url||x.download_url));return item?.url||item?.download_url||null}
- if(d&&typeof d==='object')return d.url||d.download_url||null;
- return data.video_url||data.download_url||data.url||null;
+function findVideoUrl(data){
+ const candidates=[data.video_url,data.download_url,data.url,data.output_url,data.result?.video_url,data.result?.url,data.video?.url,data.output?.url];
+ if(Array.isArray(data.outputs))candidates.push(...data.outputs.map(x=>typeof x==='string'?x:x?.url||x?.download_url));
+ if(Array.isArray(data.downloads))candidates.push(...data.downloads.map(x=>typeof x==='string'?x:x?.url||x?.download_url));
+ return candidates.find(x=>typeof x==='string'&&(x.startsWith('https://')||x.startsWith('http://')))||null;
 }
 generate.addEventListener('click',async()=>{
  if(busy)return;
  if(!prompt.value.trim()){show('Add a description of the video you want to create, then try again.');prompt.focus();return}
- const duration=Number(durationSelect.value);
- if(!Number.isInteger(duration)||duration<3||duration>30){show('Choose a duration from 3 to 30 seconds.');return}
+ const seconds=Number(durationSelect.value);
+ if(!Number.isInteger(seconds)||seconds<3||seconds>30){show('Choose a duration from 3 to 30 seconds.');return}
  busy=true;generate.disabled=true;generate.textContent='Submitting your video…';
- show(`Submitting a ${duration}-second request to Magic Hour. This may use credits from your account.`);
+ show('Sending your '+seconds+'-second video request. This may use Magic Hour credits.');
  try{
-  const response=await fetch(API_BASE+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt.value.trim(),style,aspectRatio:aspect(),duration})});
+  const response=await fetch(API_BASE+'/api/text-to-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({end_seconds:seconds,style:{prompt:style+' style: '+prompt.value.trim()},aspect_ratio:aspect(),model:'ltx-2.5',resolution:'480p',audio:false})});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(data.message||data.error||('Request failed (HTTP '+response.status+')'));
-  const id=data.id||data.project_id||data.project?.id;
-  if(!id)throw new Error('The provider did not return a project ID: '+JSON.stringify(data));
-  show('Request accepted. Project ID: '+id+'\nCredits charged: '+(data.credits_charged??'Check your Magic Hour dashboard')+'\nChecking progress…');
-  let finished=false;
-  for(let i=0;i<24;i++){
+  if(!response.ok)throw new Error(data.error?.message||data.message||data.error||('Request failed (HTTP '+response.status+')'));
+  const id=data.id||data.project_id||data.project?.id||data.data?.id;
+  if(!id)throw new Error('Magic Hour did not return a project ID. Response: '+JSON.stringify(data).slice(0,500));
+  show('Request accepted. Project ID: '+id+'\nChecking generation status…');
+  for(let i=0;i<36;i++){
    await new Promise(r=>setTimeout(r,5000));
-   const poll=await fetch(API_BASE+'/api/status?id='+encodeURIComponent(id));
+   const poll=await fetch(API_BASE+'/api/video/'+encodeURIComponent(id));
    const result=await poll.json().catch(()=>({}));
-   if(!poll.ok)throw new Error(result.message||result.error||('Status check failed (HTTP '+poll.status+')'));
-   const state=String(result.status||result.state||'').toLowerCase();
-   const videoUrl=getVideoUrl(result);
-   if(['complete','completed','success','succeeded'].includes(state)||videoUrl){
-    show('Your video is ready! Project ID: '+id);
+   if(!poll.ok)throw new Error(result.error?.message||result.message||result.error||('Status check failed (HTTP '+poll.status+')'));
+   const state=String(result.status||result.state||result.project?.status||'').toLowerCase();
+   const videoUrl=findVideoUrl(result);
+   if(['complete','completed','success','succeeded','finished'].includes(state)||videoUrl){
     if(videoUrl){
      preview.innerHTML='';
      const video=document.createElement('video');video.src=videoUrl;video.controls=true;video.playsInline=true;video.style.width='100%';video.style.maxHeight='520px';video.style.borderRadius='12px';
      const link=document.createElement('a');link.href=videoUrl;link.target='_blank';link.rel='noopener';link.textContent='Open / download video';link.style.display='inline-block';link.style.marginTop='12px';
      preview.append(video,link);
-    } else show('The project is complete, but the provider has not returned a download URL yet. Open your Magic Hour dashboard to retrieve it. Project ID: '+id);
-    finished=true;break;
+     show('Your video is ready! Project ID: '+id);
+    }else show('Generation completed, but no video URL was included. Project ID: '+id+'\nCheck your Magic Hour dashboard.');
+    return;
    }
-   if(['failed','error'].includes(state))throw new Error(result.error?.message||result.error||result.message||'Video generation failed.');
-   show('Your video is processing… Project ID: '+id+'\nStatus: '+(state||'processing')+'\nPlease wait.');
+   if(['failed','error','canceled','cancelled'].includes(state))throw new Error(result.error?.message||result.message||'Video generation failed. Check your Magic Hour dashboard.');
+   show('Video is processing…\nProject ID: '+id+'\nStatus: '+(state||'processing'));
   }
-  if(!finished)show('Your video is still processing. Project ID: '+id+'\nCheck your Magic Hour dashboard before submitting another request to avoid duplicate credit use.');
- }catch(e){show('Could not complete the video request: '+e.message+'\nCheck the Cloudflare Worker deployment and Magic Hour API key configuration.')}
+  show('The video is still processing. Project ID: '+id+'\nCheck your Magic Hour dashboard before submitting another request to avoid duplicate credit use.');
+ }catch(e){show('Video request failed: '+e.message+'\nNo further request was sent. Check the Worker/API response before retrying.')}
  finally{busy=false;generate.disabled=false;generate.textContent='✦  Generate video'}
 });
 </script></body></html>
