@@ -43,12 +43,17 @@ export default {
           return json({ error: "Enter a prompt between 1 and 1200 characters." }, 400, origin);
         }
 
-        // Keep the first integration conservative: short 3-second, 480p test clips.
+        const requestedDuration = Number(input.duration ?? 3);
+        if (!Number.isInteger(requestedDuration) || requestedDuration < 3 || requestedDuration > 60) {
+          return json({ error: "Choose a whole-number duration from 3 to 60 seconds." }, 400, origin);
+        }
+
+        // LTX-2.5 supports durations up to 60 seconds; account plan and credits may restrict longer jobs.
         const body = {
-          end_seconds: 3,
+          end_seconds: requestedDuration,
           aspect_ratio: ["16:9", "9:16", "1:1"].includes(input.aspectRatio) ? input.aspectRatio : "16:9",
           style: { prompt: prompt + (input.style ? `. Visual style: ${String(input.style).slice(0, 50)}.` : "") },
-          name: "Motion Studio test video",
+          name: `Motion Studio ${requestedDuration}s video`,
           model: "ltx-2.5",
           resolution: "480p",
           audio: false
