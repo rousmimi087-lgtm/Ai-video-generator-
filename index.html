@@ -16,16 +16,19 @@
 <div class="panel"><h2>Create a video</h2><p class="sub">Start with a prompt and customize your output.</p>
 <label class="label" for="prompt">Describe your video</label><textarea id="prompt" class="prompt" maxlength="1200" placeholder="A cinematic close-up of a glass perfume bottle on a marble table, soft morning sunlight, floating petals, elegant camera movement..."></textarea><div class="hint"><span id="count">0</span> / 1200</div>
 <span class="label">Visual style</span><div class="chips" id="styles"><button class="chip active" data-value="Cinematic">Cinematic</button><button class="chip" data-value="Realistic">Realistic</button><button class="chip" data-value="Anime">Anime</button><button class="chip" data-value="3D animation">3D animation</button><button class="chip" data-value="Fashion film">Fashion film</button><button class="chip" data-value="Product ad">Product ad</button></div>
-<div class="fields"><div><label class="label" for="ratio">Aspect ratio</label><select id="ratio"><option>16:9 · Landscape</option><option>9:16 · Portrait</option><option>1:1 · Square</option></select></div><div><label class="label" for="duration">Duration</label><select id="duration"><option>3 seconds · test clip</option></select></div><div><label class="label" for="quality">Quality</label><select id="quality"><option>480p · test quality</option></select></div><div><label class="label" for="language">Interface language</label><select id="language"><option>English</option><option>العربية</option></select></div></div>
-<button class="generate" id="generate">✦ &nbsp; Generate video</button><div class="status" id="status" role="status"></div><p class="note">A 3-second 480p test request is sent to Magic Hour. Generation may use account credits. Check your available free credits before pressing Generate; no paid plan or purchase is required by this page.</p>
+<div class="fields"><div><label class="label" for="ratio">Aspect ratio</label><select id="ratio"><option>16:9 · Landscape</option><option>9:16 · Portrait</option><option>1:1 · Square</option></select></div><div><label class="label" for="duration">Duration</label><select id="duration" aria-label="Video duration"></select></div><div><label class="label" for="quality">Quality</label><select id="quality"><option>480p · test quality</option></select></div><div><label class="label" for="language">Interface language</label><select id="language"><option>English</option><option>العربية</option></select></div></div>
+<button class="generate" id="generate">✦ &nbsp; Generate video</button><div class="status" id="status" role="status"></div><p class="note" id="durationNote">Choose a duration from 3 to 60 seconds. Longer videos may require substantially more credits and an eligible Magic Hour plan. Check your balance and plan before generating.</p>
 </div>
 <aside class="panel"><h2>Preview</h2><p class="sub">Your generated video will appear here.</p><div class="preview"><div class="play">▶</div><strong>Your canvas is ready</strong><p>Write a prompt and prepare your first video brief.</p></div><div class="features"><div class="feature"><b>✧ Any style</b><span>From realistic to 3D</span></div><div class="feature"><b>▣ Every format</b><span>Social, web and mobile</span></div><div class="feature"><b>↗ Creator-ready</b><span>Designed for sharing</span></div></div></aside>
 </section><div class="footer">MOTION STUDIO · A creative workspace for the next generation of video.</div>
 </main><script>
 const API_BASE='https://motion-studio-api.rousmimi087.workers.dev';
-const prompt=document.getElementById('prompt'),count=document.getElementById('count'),status=document.getElementById('status'),generate=document.getElementById('generate');
+const prompt=document.getElementById('prompt'),count=document.getElementById('count'),status=document.getElementById('status'),generate=document.getElementById('generate'),durationSelect=document.getElementById('duration'),durationNote=document.getElementById('durationNote');
 const preview=document.querySelector('.preview');
 let style='Cinematic',busy=false;
+for(let seconds=3;seconds<=60;seconds++){const option=document.createElement('option');option.value=String(seconds);option.textContent=seconds===60?'60 seconds · 1 minute':`${seconds} seconds`;durationSelect.append(option)}
+durationSelect.value='3';
+durationSelect.addEventListener('change',()=>{const seconds=Number(durationSelect.value);durationNote.textContent=seconds>=30?`Selected: ${seconds} seconds. This longer generation may use many credits and may require an eligible plan. Check your Magic Hour balance before generating.`:`Selected: ${seconds} seconds. Generation uses account credits; check your available balance before generating.`});
 prompt.addEventListener('input',()=>count.textContent=prompt.value.length);
 document.querySelectorAll('#styles .chip').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('#styles .chip').forEach(x=>x.classList.remove('active'));btn.classList.add('active');style=btn.dataset.value}));
 function show(message){status.textContent=message;status.classList.add('show')}
@@ -39,10 +42,12 @@ function getVideoUrl(data){
 generate.addEventListener('click',async()=>{
  if(busy)return;
  if(!prompt.value.trim()){show('Add a description of the video you want to create, then try again.');prompt.focus();return}
- busy=true;generate.disabled=true;generate.textContent='Submitting your test video…';
- show('Submitting a 3-second 480p test request to Magic Hour. This may use credits from your account.');
+ const duration=Number(durationSelect.value);
+ if(!Number.isInteger(duration)||duration<3||duration>60){show('Choose a duration from 3 to 60 seconds.');return}
+ busy=true;generate.disabled=true;generate.textContent='Submitting your video…';
+ show(`Submitting a ${duration}-second request to Magic Hour. This may use credits from your account.`);
  try{
-  const response=await fetch(API_BASE+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt.value.trim(),style,aspectRatio:aspect()})});
+  const response=await fetch(API_BASE+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt.value.trim(),style,aspectRatio:aspect(),duration})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.message||data.error||('Request failed (HTTP '+response.status+')'));
   const id=data.id||data.project_id||data.project?.id;
